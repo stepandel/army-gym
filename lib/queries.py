@@ -150,6 +150,23 @@ def get_tool_frequency(job_id: str | None = None) -> pd.DataFrame:
     )
 
 
+def get_tool_success_fail(job_id: str | None = None) -> pd.DataFrame:
+    where = "WHERE t.job_id = ?" if job_id else ""
+    params = (job_id,) if job_id else ()
+    return _query(
+        f"""SELECT tc.tool_name,
+                   COUNT(DISTINCT tc.trial_name) as trials_using,
+                   COUNT(DISTINCT CASE WHEN t.reward = 1.0 THEN tc.trial_name END) as passed_trials,
+                   COUNT(DISTINCT CASE WHEN t.reward = 0.0 THEN tc.trial_name END) as failed_trials
+            FROM tool_calls tc
+            JOIN trials t ON tc.trial_name = t.trial_name
+            {where}
+            GROUP BY tc.tool_name
+            ORDER BY trials_using DESC""",
+        params,
+    )
+
+
 def get_tool_calls(trial_name: str) -> pd.DataFrame:
     return _query(
         """SELECT * FROM tool_calls WHERE trial_name = ? ORDER BY call_index""",

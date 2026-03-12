@@ -7,6 +7,7 @@ import pandas as pd
 from lib.queries import (
     get_tool_frequency, get_tool_heatmap_data,
     get_last_n_tools_before_failure, get_tool_calls,
+    get_tool_success_fail,
 )
 from lib.components import job_selector, empty_state
 
@@ -35,6 +36,39 @@ st.dataframe(
     }),
     use_container_width=True, hide_index=True,
 )
+
+# --- Tool Usage in Passing vs Failing Trials ---
+st.subheader("Tool Usage: Passing vs Failing Trials")
+sf = get_tool_success_fail(job_id)
+if not sf.empty:
+    total_trials = sf["trials_using"].max()  # approximate total from most-used tool
+    sf["pass_rate"] = sf["passed_trials"] / sf["trials_using"]
+    sf["fail_rate"] = sf["failed_trials"] / sf["trials_using"]
+
+    melted = sf.melt(
+        id_vars=["tool_name"],
+        value_vars=["pass_rate", "fail_rate"],
+        var_name="outcome", value_name="pct",
+    )
+    melted["outcome"] = melted["outcome"].map({"pass_rate": "Pass", "fail_rate": "Fail"})
+    fig = px.bar(
+        melted, x="pct", y="tool_name", color="outcome", orientation="h",
+        color_discrete_map={"Pass": "#2ecc71", "Fail": "#e74c3c"},
+        labels={"pct": "% of Trials Using Tool", "tool_name": "Tool"},
+    )
+    fig.update_layout(
+        margin=dict(t=20, b=20), barmode="stack",
+        yaxis={"categoryorder": "total ascending"},
+        xaxis_tickformat=".0%",
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    display = sf[["tool_name", "trials_using", "passed_trials", "failed_trials", "pass_rate"]].copy()
+    display.columns = ["Tool", "Trials Using", "Passed", "Failed", "Pass Rate"]
+    st.dataframe(
+        display.style.format({"Pass Rate": "{:.1%}"}),
+        use_container_width=True, hide_index=True,
+    )
 
 # --- Heatmap ---
 st.subheader("Tool × Task Heatmap")
