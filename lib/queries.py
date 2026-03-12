@@ -25,10 +25,14 @@ def get_jobs() -> pd.DataFrame:
 def get_trials(job_id: str | None = None) -> pd.DataFrame:
     if job_id:
         return _query(
-            """SELECT * FROM trials WHERE job_id = ? ORDER BY task_name""",
+            f"""SELECT *, {FAILURE_REASON_CASE} as failure_reason
+                FROM trials WHERE job_id = ? ORDER BY task_name""",
             (job_id,),
         )
-    return _query("SELECT * FROM trials ORDER BY job_id DESC, task_name")
+    return _query(
+        f"""SELECT *, {FAILURE_REASON_CASE} as failure_reason
+            FROM trials ORDER BY job_id DESC, task_name"""
+    )
 
 
 def get_job_summary() -> pd.DataFrame:
@@ -45,15 +49,20 @@ def get_job_summary() -> pd.DataFrame:
     )
 
 
+FAILURE_REASON_CASE = """
+    CASE
+      WHEN reward = 1.0 THEN 'Passed'
+      WHEN exception_type IS NOT NULL THEN 'Exception: ' || exception_type
+      WHEN reward = 0.0 AND duration_agent_exec_s >= 590 THEN 'Timeout'
+      WHEN reward = 0.0 THEN 'Tests Failed'
+      ELSE 'Other'
+    END
+"""
+
+
 def get_failure_categories(job_id: str) -> pd.DataFrame:
     return _query(
-        """SELECT
-             CASE
-               WHEN exception_type IS NOT NULL THEN 'Exception: ' || exception_type
-               WHEN reward = 0.0 THEN 'Failed (no exception)'
-               WHEN reward = 1.0 THEN 'Passed'
-               ELSE 'Other'
-             END as category,
+        f"""SELECT {FAILURE_REASON_CASE} as category,
              COUNT(*) as count
            FROM trials WHERE job_id = ?
            GROUP BY category ORDER BY count DESC""",
@@ -71,7 +80,8 @@ def get_duration_stats(job_id: str | None = None) -> pd.DataFrame:
         f"""SELECT t.trial_name, t.task_name, t.reward, t.exception_type,
                    t.duration_total_s, t.duration_env_setup_s,
                    t.duration_agent_setup_s, t.duration_agent_exec_s,
-                   t.duration_verifier_s
+                   t.duration_verifier_s,
+                   {FAILURE_REASON_CASE} as failure_reason
             FROM trials t {where}
             ORDER BY t.duration_total_s DESC""",
         params,
@@ -80,9 +90,10 @@ def get_duration_stats(job_id: str | None = None) -> pd.DataFrame:
 
 def get_phase_durations(job_id: str) -> pd.DataFrame:
     return _query(
-        """SELECT task_name, reward,
+        f"""SELECT task_name, reward,
                   duration_env_setup_s, duration_agent_setup_s,
-                  duration_agent_exec_s, duration_verifier_s
+                  duration_agent_exec_s, duration_verifier_s,
+                  {FAILURE_REASON_CASE} as failure_reason
            FROM trials WHERE job_id = ? AND duration_total_s IS NOT NULL
            ORDER BY duration_total_s DESC""",
         (job_id,),
@@ -97,6 +108,7 @@ def get_trial_token_summary(job_id: str | None = None) -> pd.DataFrame:
     params = (job_id,) if job_id else ()
     return _query(
         f"""SELECT t.trial_name, t.task_name, t.reward,
+                   {FAILURE_REASON_CASE} as failure_reason,
                    COUNT(l.id) as n_turns,
                    SUM(l.input_tokens) as total_input,
                    SUM(l.output_tokens) as total_output,
@@ -237,8 +249,9 @@ def get_trial_timeline(trial_name: str) -> pd.DataFrame:
 
 def get_task_across_jobs() -> pd.DataFrame:
     return _query(
-        """SELECT t.task_name, t.job_id, t.reward, t.exception_type,
-                  t.duration_agent_exec_s
+        f"""SELECT t.task_name, t.job_id, t.reward, t.exception_type,
+                  t.duration_agent_exec_s,
+                  {FAILURE_REASON_CASE} as failure_reason
            FROM trials t
            ORDER BY t.task_name, t.job_id"""
     )

@@ -7,13 +7,14 @@ import pandas as pd
 from lib.queries import (
     get_tool_frequency, get_tool_heatmap_data,
     get_last_n_tools_before_failure, get_tool_calls,
-    get_tool_success_fail,
+    get_tool_success_fail, get_trials,
 )
-from lib.components import job_selector, empty_state
+from lib.components import job_selector, empty_state, outcome_filter, apply_outcome_filter
 
 st.title("Tool Usage")
 
 job_id = job_selector()
+outcome = outcome_filter()
 
 freq = get_tool_frequency(job_id)
 if freq.empty:
@@ -41,7 +42,6 @@ st.dataframe(
 st.subheader("Tool Usage: Passing vs Failing Trials")
 sf = get_tool_success_fail(job_id)
 if not sf.empty:
-    total_trials = sf["trials_using"].max()  # approximate total from most-used tool
     sf["pass_rate"] = sf["passed_trials"] / sf["trials_using"]
     sf["fail_rate"] = sf["failed_trials"] / sf["trials_using"]
 
@@ -72,20 +72,30 @@ if not sf.empty:
 
 # --- Heatmap ---
 st.subheader("Tool × Task Heatmap")
-heatmap = get_tool_heatmap_data(job_id)
-if not heatmap.empty:
-    pivot = heatmap.pivot_table(index="task_name", columns="tool_name", values="call_count", fill_value=0)
-    fig = px.imshow(
-        pivot, text_auto=True, aspect="auto",
-        color_continuous_scale="Blues",
-        labels={"color": "Calls"},
-    )
-    fig.update_layout(margin=dict(t=20, b=20))
-    st.plotly_chart(fig, use_container_width=True)
+trials = get_trials(job_id)
+filtered_trials = apply_outcome_filter(trials, outcome)
+if not filtered_trials.empty:
+    filtered_names = set(filtered_trials["trial_name"])
+    heatmap = get_tool_heatmap_data(job_id)
+    # Filter heatmap to only tasks in filtered trials
+    filtered_tasks = set(filtered_trials["task_name"])
+    heatmap = heatmap[heatmap["task_name"].isin(filtered_tasks)]
+    if not heatmap.empty:
+        pivot = heatmap.pivot_table(index="task_name", columns="tool_name", values="call_count", fill_value=0)
+        fig = px.imshow(
+            pivot, text_auto=True, aspect="auto",
+            color_continuous_scale="Blues",
+            labels={"color": "Calls"},
+        )
+        fig.update_layout(margin=dict(t=20, b=20))
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        empty_state("No heatmap data for this filter.")
+else:
+    empty_state("No trials for this filter.")
 
 # --- Error Rates by Tool ---
 st.subheader("Error Rate by Tool")
-freq["outcome"] = freq["reward"].map({1.0: "Pass", 0.0: "Fail"}).fillna("Error")
 fig = px.bar(
     tool_summary[tool_summary["total_errors"] > 0].sort_values("error_rate", ascending=True),
     x="error_rate", y="tool_name", orientation="h",
@@ -99,22 +109,28 @@ if job_id:
     st.subheader("Last 5 Tool Calls Before Failure")
     last5 = get_last_n_tools_before_failure(job_id)
     if not last5.empty:
-        for task_name in last5["task_name"].unique():
-            with st.expander(task_name):
-                subset = last5[last5["task_name"] == task_name][
-                    ["call_index", "tool_name", "is_error", "duration_s"]
-                ]
-                st.dataframe(subset, use_container_width=True, hide_index=True)
+        # Filter to matching outcome
+        if outcome != "All":
+            matching_tasks = set(filtered_trials["task_name"])
+            last5 = last5[last5["task_name"].isin(matching_tasks)]
+        if not last5.empty:
+            for task_name in last5["task_name"].unique():
+                with st.expander(task_name):
+                    subset = last5[last5["task_name"] == task_name][
+                        ["call_index", "tool_name", "is_error", "duration_s"]
+                    ]
+                    st.dataframe(subset, use_container_width=True, hide_index=True)
+        else:
+            empty_state("No failed trials for this filter.")
     else:
         empty_state("No failed trials without exceptions in this job.")
 
 # --- Tool Sequence Timeline ---
 st.subheader("Tool Sequence Timeline")
-from lib.queries import get_trials as _get_trials
-trials = _get_trials(job_id)
-ls_trials = trials[trials["ls_run_id"].notna()]
+ls_trials = apply_outcome_filter(trials, outcome)
+ls_trials = ls_trials[ls_trials["ls_run_id"].notna()]
 if ls_trials.empty:
-    empty_state("No LangSmith-linked trials available.")
+    empty_state("No LangSmith-linked trials for this filter.")
 else:
     trial_name = st.selectbox("Select trial", ls_trials["trial_name"].tolist(), key="tool_timeline_trial")
     if trial_name:

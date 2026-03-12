@@ -5,25 +5,27 @@ import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
 from lib.queries import get_duration_stats, get_phase_durations, get_trial_token_summary
-from lib.components import job_selector, empty_state
+from lib.components import job_selector, empty_state, outcome_filter, apply_outcome_filter
+
+OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Timeout": "#f39c12"}
 
 st.title("Time Analysis")
 
 job_id = job_selector()
+outcome = outcome_filter()
 
-durations = get_duration_stats(job_id)
+durations = apply_outcome_filter(get_duration_stats(job_id), outcome)
 if durations.empty:
-    empty_state("No duration data available.")
+    empty_state("No duration data available for this filter.")
     st.stop()
 
 # --- Duration Distribution ---
 st.subheader("Total Duration Distribution")
-durations["outcome"] = durations["reward"].map({1.0: "Pass", 0.0: "Fail"}).fillna("Error")
 fig = px.histogram(
-    durations, x="duration_total_s", color="outcome",
+    durations, x="duration_total_s", color="failure_reason",
     nbins=20, barmode="overlay",
-    labels={"duration_total_s": "Duration (s)", "outcome": "Outcome"},
-    color_discrete_map={"Pass": "#2ecc71", "Fail": "#e74c3c", "Error": "#95a5a6"},
+    labels={"duration_total_s": "Duration (s)", "failure_reason": "Outcome"},
+    color_discrete_map=OUTCOME_COLORS,
 )
 fig.update_layout(margin=dict(t=20, b=20))
 st.plotly_chart(fig, use_container_width=True)
@@ -31,14 +33,14 @@ st.plotly_chart(fig, use_container_width=True)
 # --- Phase Waterfall ---
 if job_id:
     st.subheader("Phase Breakdown by Trial")
-    phases = get_phase_durations(job_id)
+    phases = apply_outcome_filter(get_phase_durations(job_id), outcome)
     if not phases.empty:
         phase_cols = ["duration_env_setup_s", "duration_agent_setup_s",
                       "duration_agent_exec_s", "duration_verifier_s"]
         phase_labels = ["Env Setup", "Agent Setup", "Agent Execution", "Verifier"]
 
         melted = phases.melt(
-            id_vars=["task_name", "reward"],
+            id_vars=["task_name", "failure_reason"],
             value_vars=phase_cols,
             var_name="phase", value_name="duration_s",
         )
@@ -59,7 +61,7 @@ if job_id:
 
 # --- Duration vs Tokens Scatter ---
 st.subheader("Duration vs Total Tokens")
-tokens = get_trial_token_summary(job_id)
+tokens = apply_outcome_filter(get_trial_token_summary(job_id), outcome)
 if tokens.empty:
     empty_state("No LangSmith token data yet. Run `python ingest_langsmith.py` first.")
 else:
@@ -67,9 +69,9 @@ else:
     if not merged.empty:
         fig = px.scatter(
             merged, x="total_tokens", y="duration_agent_exec_s",
-            color="outcome", hover_name="task_name",
+            color="failure_reason", hover_name="task_name",
             labels={"total_tokens": "Total Tokens", "duration_agent_exec_s": "Agent Exec (s)"},
-            color_discrete_map={"Pass": "#2ecc71", "Fail": "#e74c3c", "Error": "#95a5a6"},
+            color_discrete_map=OUTCOME_COLORS,
         )
         fig.update_layout(margin=dict(t=20, b=20))
         st.plotly_chart(fig, use_container_width=True)

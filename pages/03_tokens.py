@@ -4,16 +4,19 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 import pandas as pd
-from lib.queries import get_trial_token_summary, get_cumulative_tokens, get_trials
-from lib.components import job_selector, trial_selector, empty_state
+from lib.queries import get_trial_token_summary, get_cumulative_tokens
+from lib.components import job_selector, empty_state, outcome_filter, apply_outcome_filter
+
+OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Timeout": "#f39c12"}
 
 st.title("Token Economics")
 
 job_id = job_selector()
+outcome = outcome_filter()
 
-tokens = get_trial_token_summary(job_id)
+tokens = apply_outcome_filter(get_trial_token_summary(job_id), outcome)
 if tokens.empty:
-    empty_state("No LangSmith token data yet. Run `python ingest_langsmith.py` to fetch traces.")
+    empty_state("No LangSmith token data for this filter. Run `python ingest_langsmith.py` to fetch traces.")
     st.stop()
 
 # --- Scorecard ---
@@ -32,12 +35,11 @@ with c4:
 
 # --- Token Distribution ---
 st.subheader("Token Distribution by Outcome")
-tokens["outcome"] = tokens["reward"].map({1.0: "Pass", 0.0: "Fail"}).fillna("Error")
 fig = px.box(
-    tokens, x="outcome", y="total_tokens", color="outcome",
+    tokens, x="failure_reason", y="total_tokens", color="failure_reason",
     points="all", hover_name="task_name",
-    color_discrete_map={"Pass": "#2ecc71", "Fail": "#e74c3c", "Error": "#95a5a6"},
-    labels={"total_tokens": "Total Tokens"},
+    color_discrete_map=OUTCOME_COLORS,
+    labels={"total_tokens": "Total Tokens", "failure_reason": "Outcome"},
 )
 fig.update_layout(margin=dict(t=20, b=20))
 st.plotly_chart(fig, use_container_width=True)
@@ -46,9 +48,9 @@ st.plotly_chart(fig, use_container_width=True)
 st.subheader("Cost by Trial")
 fig = px.bar(
     tokens.sort_values("total_cost", ascending=True),
-    x="total_cost", y="task_name", color="outcome", orientation="h",
+    x="total_cost", y="task_name", color="failure_reason", orientation="h",
     labels={"total_cost": "Cost (USD)", "task_name": "Task"},
-    color_discrete_map={"Pass": "#2ecc71", "Fail": "#e74c3c", "Error": "#95a5a6"},
+    color_discrete_map=OUTCOME_COLORS,
 )
 fig.update_layout(margin=dict(t=20, b=20), yaxis={"categoryorder": "total ascending"})
 st.plotly_chart(fig, use_container_width=True)
@@ -82,9 +84,9 @@ tokens["cache_ratio"] = tokens["total_cache_read"] / (
 ).replace(0, 1)
 fig = px.bar(
     tokens.sort_values("cache_ratio"), x="cache_ratio", y="task_name",
-    orientation="h", color="outcome",
+    orientation="h", color="failure_reason",
     labels={"cache_ratio": "Cache Hit Ratio", "task_name": "Task"},
-    color_discrete_map={"Pass": "#2ecc71", "Fail": "#e74c3c", "Error": "#95a5a6"},
+    color_discrete_map=OUTCOME_COLORS,
 )
 fig.update_layout(margin=dict(t=20, b=20), yaxis={"categoryorder": "total ascending"})
 st.plotly_chart(fig, use_container_width=True)

@@ -4,9 +4,13 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 from lib.queries import get_job_summary, get_task_across_jobs, get_regressions, get_exception_trends
-from lib.components import empty_state
+from lib.components import empty_state, outcome_filter, apply_outcome_filter
+
+OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Timeout": "#f39c12"}
 
 st.title("Compare Jobs")
+
+outcome = outcome_filter()
 
 summary = get_job_summary()
 if summary.empty or len(summary) < 2:
@@ -26,18 +30,25 @@ st.plotly_chart(fig, use_container_width=True)
 # --- Task × Job Matrix ---
 st.subheader("Task Results Across Jobs")
 task_jobs = get_task_across_jobs()
+task_jobs = apply_outcome_filter(task_jobs, outcome)
 if not task_jobs.empty:
     pivot = task_jobs.pivot_table(
-        index="task_name", columns="job_id", values="reward", aggfunc="first"
+        index="task_name", columns="job_id", values="failure_reason", aggfunc="first"
     )
-    # Color: 1.0 green, 0.0 red, NaN gray
-    styled = pivot.style.applymap(
-        lambda v: "background-color: #2ecc71; color: white" if v == 1.0
-        else "background-color: #e74c3c; color: white" if v == 0.0
-        else "background-color: #ecf0f1",
-        subset=pivot.columns,
-    ).format("{:.0f}", na_rep="—")
+
+    def color_outcome(v):
+        if v == "Passed":
+            return "background-color: #2ecc71; color: white"
+        elif v == "Tests Failed":
+            return "background-color: #e74c3c; color: white"
+        elif v == "Timeout":
+            return "background-color: #f39c12; color: white"
+        return "background-color: #ecf0f1"
+
+    styled = pivot.style.map(color_outcome, subset=pivot.columns)
     st.dataframe(styled, use_container_width=True)
+else:
+    empty_state("No trials for this filter.")
 
 # --- Regressions ---
 st.subheader("Regressions")

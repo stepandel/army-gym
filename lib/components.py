@@ -19,6 +19,21 @@ def job_selector(key: str = "job_select", allow_all: bool = True) -> str | None:
     return selected
 
 
+OUTCOME_OPTIONS = ["All", "Passed", "Tests Failed", "Timeout"]
+
+
+def outcome_filter(key: str = "outcome_filter") -> str:
+    """Sidebar outcome filter. Returns selected outcome or 'All'."""
+    return st.sidebar.selectbox("Outcome", OUTCOME_OPTIONS, key=key)
+
+
+def apply_outcome_filter(df: pd.DataFrame, outcome: str) -> pd.DataFrame:
+    """Filter a DataFrame that has a 'failure_reason' column by outcome."""
+    if outcome == "All" or "failure_reason" not in df.columns:
+        return df
+    return df[df["failure_reason"] == outcome]
+
+
 def trial_selector(trials_df: pd.DataFrame, key: str = "trial_select") -> str | None:
     """Sidebar trial selector from a given DataFrame."""
     if trials_df.empty:

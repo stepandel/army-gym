@@ -3,11 +3,12 @@
 import streamlit as st
 import plotly.express as px
 from lib.queries import get_job_summary, get_trials, get_failure_categories
-from lib.components import job_selector, metric_card, empty_state
+from lib.components import job_selector, metric_card, empty_state, outcome_filter, apply_outcome_filter
 
 st.title("Job Overview")
 
 job_id = job_selector()
+outcome = outcome_filter()
 
 # --- Scorecard ---
 summary = get_job_summary()
@@ -17,15 +18,19 @@ if summary.empty:
 
 if job_id:
     row = summary[summary["job_id"] == job_id].iloc[0]
-    c1, c2, c3, c4 = st.columns(4)
+    cats = get_failure_categories(job_id)
+    cat_counts = dict(zip(cats["category"], cats["count"])) if not cats.empty else {}
+    c1, c2, c3, c4, c5 = st.columns(5)
     with c1:
         metric_card("Trials", int(row["trial_count"]))
     with c2:
         metric_card("Pass Rate", f"{row['mean_reward']:.0%}" if row['mean_reward'] is not None else "N/A")
     with c3:
-        metric_card("Passed", int(row["passed"]))
+        metric_card("Passed", int(cat_counts.get("Passed", 0)))
     with c4:
-        metric_card("Errors", int(row["errors"]))
+        metric_card("Tests Failed", int(cat_counts.get("Tests Failed", 0)))
+    with c5:
+        metric_card("Timed Out", int(cat_counts.get("Timeout", 0)))
 else:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -50,17 +55,25 @@ if job_id:
     st.subheader("Outcome Breakdown")
     cats = get_failure_categories(job_id)
     if not cats.empty:
-        fig = px.pie(cats, names="category", values="count", hole=0.4)
+        color_map = {
+            "Passed": "#2ecc71",
+            "Tests Failed": "#e74c3c",
+            "Timeout": "#f39c12",
+        }
+        fig = px.pie(
+            cats, names="category", values="count", hole=0.4,
+            color="category", color_discrete_map=color_map,
+        )
         fig.update_layout(margin=dict(t=20, b=20))
         st.plotly_chart(fig, use_container_width=True)
 
     # --- Trial Table ---
     st.subheader("Trials")
-    trials = get_trials(job_id)
+    trials = apply_outcome_filter(get_trials(job_id), outcome)
     if not trials.empty:
         display = trials[
-            ["trial_name", "task_name", "reward", "exception_type",
-             "duration_total_s", "tests_passed", "tests_total"]
+            ["trial_name", "task_name", "failure_reason",
+             "duration_agent_exec_s", "tests_passed", "tests_total"]
         ].copy()
-        display["reward"] = display["reward"].map({1.0: "Pass", 0.0: "Fail"}).fillna("—")
+        display.columns = ["Trial", "Task", "Outcome", "Agent Exec (s)", "Tests Passed", "Tests Total"]
         st.dataframe(display, use_container_width=True, hide_index=True)

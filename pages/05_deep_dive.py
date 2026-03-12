@@ -6,15 +6,16 @@ import plotly.express as px
 import pandas as pd
 from pathlib import Path
 from lib.queries import get_trials, get_trial_detail, get_trial_timeline, get_llm_turns, get_tool_calls
-from lib.components import job_selector, empty_state
+from lib.components import job_selector, empty_state, outcome_filter, apply_outcome_filter
 
 st.title("Trial Deep Dive")
 
 job_id = job_selector()
-trials = get_trials(job_id)
+outcome = outcome_filter()
+trials = apply_outcome_filter(get_trials(job_id), outcome)
 
 if trials.empty:
-    empty_state("No trials found.")
+    empty_state("No trials found for this filter.")
     st.stop()
 
 trial_name = st.sidebar.selectbox("Trial", trials["trial_name"].tolist())
