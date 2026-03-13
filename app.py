@@ -15,6 +15,7 @@ tokens = st.Page("pages/03_tokens.py", title="Token Economics", icon="🪙")
 tools = st.Page("pages/04_tools.py", title="Tool Usage", icon="🔧")
 deep_dive = st.Page("pages/05_deep_dive.py", title="Trial Deep Dive", icon="🔍")
 compare = st.Page("pages/06_compare.py", title="Compare Jobs", icon="📈")
+compare_trials = st.Page("pages/07_compare_trials.py", title="Compare Trials", icon="🔀")
 
-pg = st.navigation([overview, time_analysis, tokens, tools, deep_dive, compare])
+pg = st.navigation([overview, time_analysis, tokens, tools, deep_dive, compare, compare_trials])
 pg.run()

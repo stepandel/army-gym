@@ -223,7 +223,33 @@ def get_tool_heatmap_data(job_id: str | None = None) -> pd.DataFrame:
 
 
 def get_trial_detail(trial_name: str) -> pd.DataFrame:
-    return _query("SELECT * FROM trials WHERE trial_name = ?", (trial_name,))
+    return _query(
+        f"SELECT *, {FAILURE_REASON_CASE} as failure_reason FROM trials WHERE trial_name = ?",
+        (trial_name,),
+    )
+
+
+def get_trial_token_totals(trial_name: str) -> pd.DataFrame:
+    return _query(
+        """SELECT COUNT(*) as n_turns,
+                  SUM(input_tokens) as total_input,
+                  SUM(output_tokens) as total_output,
+                  SUM(cache_read_tokens) as total_cache_read,
+                  SUM(total_tokens) as total_tokens,
+                  SUM(cost_usd) as total_cost
+           FROM llm_turns WHERE trial_name = ?""",
+        (trial_name,),
+    )
+
+
+def get_trial_tool_summary(trial_name: str) -> pd.DataFrame:
+    return _query(
+        """SELECT tool_name, COUNT(*) as calls, SUM(is_error) as errors,
+                  AVG(duration_s) as avg_duration_s
+           FROM tool_calls WHERE trial_name = ?
+           GROUP BY tool_name ORDER BY calls DESC""",
+        (trial_name,),
+    )
 
 
 def get_trial_timeline(trial_name: str) -> pd.DataFrame:
