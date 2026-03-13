@@ -4,7 +4,7 @@ import streamlit as st
 import plotly.express as px
 import pandas as pd
 from lib.queries import get_job_summary, get_task_across_jobs, get_regressions, get_exception_trends
-from lib.components import empty_state, outcome_filter, apply_outcome_filter
+from lib.components import empty_state, outcome_filter, apply_outcome_filter, job_multiselect
 
 OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Timeout": "#f39c12"}
 
@@ -17,8 +17,7 @@ if summary.empty or len(summary) < 2:
     empty_state("Need at least 2 jobs to compare. Run more evals first.")
     st.stop()
 
-job_ids = summary["job_id"].tolist()
-selected_jobs = st.sidebar.multiselect("Jobs to compare", job_ids, default=job_ids)
+selected_jobs = job_multiselect()
 
 if len(selected_jobs) < 2:
     empty_state("Select at least 2 jobs to compare.")
