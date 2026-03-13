@@ -17,6 +17,15 @@ if summary.empty or len(summary) < 2:
     empty_state("Need at least 2 jobs to compare. Run more evals first.")
     st.stop()
 
+job_ids = summary["job_id"].tolist()
+selected_jobs = st.sidebar.multiselect("Jobs to compare", job_ids, default=job_ids)
+
+if len(selected_jobs) < 2:
+    empty_state("Select at least 2 jobs to compare.")
+    st.stop()
+
+summary = summary[summary["job_id"].isin(selected_jobs)]
+
 # --- Pass Rate Trend ---
 st.subheader("Pass Rate Across Jobs")
 fig = px.line(
@@ -30,6 +39,7 @@ st.plotly_chart(fig, use_container_width=True)
 # --- Task × Job Matrix ---
 st.subheader("Task Results Across Jobs")
 task_jobs = get_task_across_jobs()
+task_jobs = task_jobs[task_jobs["job_id"].isin(selected_jobs)]
 task_jobs = apply_outcome_filter(task_jobs, outcome)
 if not task_jobs.empty:
     pivot = task_jobs.pivot_table(
@@ -53,6 +63,9 @@ else:
 # --- Regressions ---
 st.subheader("Regressions")
 regressions = get_regressions()
+regressions = regressions[
+    regressions["passed_job"].isin(selected_jobs) & regressions["failed_job"].isin(selected_jobs)
+]
 if regressions.empty:
     st.success("No regressions detected.")
 else:
@@ -65,8 +78,9 @@ else:
 # --- Exception Trends ---
 st.subheader("Exception Trends")
 exc = get_exception_trends()
+exc = exc[exc["job_id"].isin(selected_jobs)]
 if exc.empty:
-    st.success("No exceptions across jobs.")
+    st.success("No exceptions across selected jobs.")
 else:
     fig = px.bar(
         exc, x="job_id", y="count", color="exception_type",
