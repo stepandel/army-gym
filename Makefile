@@ -12,7 +12,7 @@ ingest-harbor:
 ingest-langsmith:
 	python ingest_langsmith.py
 
-serve:
+serve: ingest
 	streamlit run app.py
 
 watch:
