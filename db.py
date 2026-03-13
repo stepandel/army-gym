@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS trials (
     duration_agent_exec_s REAL,
     duration_verifier_s REAL,
     agent_output TEXT,
+    instruction TEXT,
     tests_total INTEGER,
     tests_passed INTEGER,
     tests_failed INTEGER,

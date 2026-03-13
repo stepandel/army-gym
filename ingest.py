@@ -1,6 +1,7 @@
 """Harbor ETL: walk jobs/, parse result.json + verifier files, upsert into SQLite."""
 
 import argparse
+import base64
 import json
 import sys
 from datetime import datetime
@@ -140,6 +141,18 @@ def ingest_jobs(jobs_dir: Path) -> None:
             if ar and ar.get("metadata"):
                 agent_output = ar["metadata"].get("agent_output")
 
+            # Extract instruction from agent command
+            instruction = None
+            cmd_file = trial_dir / "agent" / "command-0" / "command.txt"
+            if cmd_file.exists():
+                cmd_text = cmd_file.read_text()
+                if "base64:" in cmd_text:
+                    b64_part = cmd_text.split("base64:")[-1].strip().strip('"').strip("'")
+                    try:
+                        instruction = base64.b64decode(b64_part + "==").decode("utf-8", errors="replace")
+                    except Exception:
+                        pass
+
             # CTRF verifier data
             tests_total = tests_passed = tests_failed = None
             ctrf_path = trial_dir / "verifier" / "ctrf.json"
@@ -158,8 +171,8 @@ def ingest_jobs(jobs_dir: Path) -> None:
                     started_at, finished_at,
                     duration_total_s, duration_env_setup_s, duration_agent_setup_s,
                     duration_agent_exec_s, duration_verifier_s,
-                    agent_output, tests_total, tests_passed, tests_failed)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    agent_output, instruction, tests_total, tests_passed, tests_failed)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
                 (
                     trial["trial_name"],
                     job_id,
@@ -177,6 +190,7 @@ def ingest_jobs(jobs_dir: Path) -> None:
                     phase_duration_s(trial.get("agent_execution")),
                     phase_duration_s(trial.get("verifier")),
                     agent_output,
+                    instruction,
                     tests_total,
                     tests_passed,
                     tests_failed,

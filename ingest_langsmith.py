@@ -55,42 +55,17 @@ def extract_usage(run) -> dict:
     return usage
 
 
-def match_trial(run, trials_by_task: dict, trials_by_name: dict) -> str | None:
-    """Match a LangSmith root run to a Harbor trial."""
-    inputs = run.inputs or {}
+def match_trial(run, trials_by_instruction: dict) -> str | None:
+    """Match a LangSmith root run to a Harbor trial by instruction text."""
+    instruction = (run.inputs or {}).get("instruction", "")
+    if not instruction:
+        return None
 
-    # Try matching by instruction text to task content
-    instruction = inputs.get("instruction", "")
-    session_id = inputs.get("sessionId", "")
-
-    # Try direct task name match from instruction or session metadata
-    for task_name, trial_rows in trials_by_task.items():
-        for trial in trial_rows:
-            # Time overlap: run must overlap with agent_execution phase
-            trial_start = parse_iso(trial["started_at"])
-            trial_end = parse_iso(trial["finished_at"])
-            if not trial_start or not trial_end:
-                continue
-
-            run_start = run.start_time
-            run_end = run.end_time
-            if not run_start or not run_end:
-                continue
-
-            # Make all timezone-aware for comparison
-            if trial_start.tzinfo is None:
-                trial_start = trial_start.replace(tzinfo=timezone.utc)
-            if trial_end.tzinfo is None:
-                trial_end = trial_end.replace(tzinfo=timezone.utc)
-            if run_start.tzinfo is None:
-                run_start = run_start.replace(tzinfo=timezone.utc)
-            if run_end.tzinfo is None:
-                run_end = run_end.replace(tzinfo=timezone.utc)
-
-            # Check time overlap with some buffer
-            buffer = timedelta(minutes=2)
-            if run_start <= trial_end + buffer and run_end >= trial_start - buffer:
-                return trial["trial_name"]
+    # Match by instruction prefix (first 200 chars to handle minor differences)
+    run_prefix = instruction[:200]
+    for trial_prefix, trial_names in trials_by_instruction.items():
+        if run_prefix == trial_prefix and trial_names:
+            return trial_names[0]  # return first unmatched trial with this instruction
 
     return None
 
@@ -105,17 +80,18 @@ def ingest_langsmith(dry_run: bool = False) -> None:
 
     # Load trials needing LangSmith data
     unlinked = conn.execute(
-        "SELECT trial_name, task_name, started_at, finished_at FROM trials WHERE ls_run_id IS NULL"
+        "SELECT trial_name, task_name, started_at, finished_at, instruction FROM trials WHERE ls_run_id IS NULL"
     ).fetchall()
     if not unlinked:
         print("All trials already have LangSmith links.")
         return
 
-    # Build lookup structures
-    trials_by_task: dict[str, list] = {}
+    # Build lookup by instruction prefix (first 200 chars)
+    trials_by_instruction: dict[str, list[str]] = {}
     for row in unlinked:
-        trials_by_task.setdefault(row["task_name"], []).append(dict(row))
-    trials_by_name = {row["trial_name"]: dict(row) for row in unlinked}
+        if row["instruction"]:
+            prefix = row["instruction"][:200]
+            trials_by_instruction.setdefault(prefix, []).append(row["trial_name"])
 
     # Get time window from trials
     all_starts = [parse_iso(r["started_at"]) for r in unlinked if r["started_at"]]
@@ -157,7 +133,7 @@ def ingest_langsmith(dry_run: bool = False) -> None:
         if run_id in ingested_runs:
             continue
 
-        trial_name = match_trial(run, trials_by_task, trials_by_name)
+        trial_name = match_trial(run, trials_by_instruction)
         if not trial_name:
             continue
 
@@ -262,10 +238,10 @@ def ingest_langsmith(dry_run: bool = False) -> None:
         )
 
         # Remove from unlinked lookup to prevent double-matching
-        task = trials_by_name.get(trial_name, {}).get("task_name")
-        if task and task in trials_by_task:
-            trials_by_task[task] = [
-                t for t in trials_by_task[task] if t["trial_name"] != trial_name
+        run_instruction = (run.inputs or {}).get("instruction", "")[:200]
+        if run_instruction in trials_by_instruction:
+            trials_by_instruction[run_instruction] = [
+                t for t in trials_by_instruction[run_instruction] if t != trial_name
             ]
 
         print(f"    -> {llm_idx} LLM turns, {tool_idx} tool calls")
