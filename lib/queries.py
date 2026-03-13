@@ -53,7 +53,8 @@ FAILURE_REASON_CASE = """
     CASE
       WHEN reward = 1.0 THEN 'Passed'
       WHEN exception_type IS NOT NULL THEN 'Exception: ' || exception_type
-      WHEN reward = 0.0 AND duration_agent_exec_s >= 590 THEN 'Timeout'
+      WHEN reward = 0.0 AND duration_agent_exec_s >= 590 THEN 'Agent Timeout'
+      WHEN reward = 0.0 AND duration_verifier_s >= 500 THEN 'Verifier Timeout'
       WHEN reward = 0.0 THEN 'Tests Failed'
       ELSE 'Other'
     END
@@ -169,8 +170,9 @@ def get_tool_success_fail(job_id: str | None = None) -> pd.DataFrame:
         f"""SELECT tc.tool_name,
                    COUNT(DISTINCT tc.trial_name) as trials_using,
                    COUNT(DISTINCT CASE WHEN t.reward = 1.0 THEN tc.trial_name END) as passed_trials,
-                   COUNT(DISTINCT CASE WHEN t.reward = 0.0 AND t.duration_agent_exec_s < 590 THEN tc.trial_name END) as tests_failed_trials,
-                   COUNT(DISTINCT CASE WHEN t.reward = 0.0 AND t.duration_agent_exec_s >= 590 THEN tc.trial_name END) as timeout_trials
+                   COUNT(DISTINCT CASE WHEN t.reward = 0.0 AND t.duration_agent_exec_s < 590 AND t.duration_verifier_s < 500 THEN tc.trial_name END) as tests_failed_trials,
+                   COUNT(DISTINCT CASE WHEN t.reward = 0.0 AND t.duration_agent_exec_s >= 590 THEN tc.trial_name END) as agent_timeout_trials,
+                   COUNT(DISTINCT CASE WHEN t.reward = 0.0 AND t.duration_agent_exec_s < 590 AND t.duration_verifier_s >= 500 THEN tc.trial_name END) as verifier_timeout_trials
             FROM tool_calls tc
             JOIN trials t ON tc.trial_name = t.trial_name
             {where}

@@ -9,6 +9,7 @@ from lib.queries import (
     get_trials, get_trial_detail, get_trial_token_totals,
     get_trial_tool_summary, get_cumulative_tokens,
 )
+from lib.queries import get_jobs
 from lib.components import empty_state
 
 st.title("Compare Trials")
@@ -18,21 +19,35 @@ if all_trials.empty:
     empty_state("No trials found.")
     st.stop()
 
-# Build labels: task_name (job_id) - outcome
-all_trials["label"] = all_trials["task_name"] + " (" + all_trials["job_id"] + ")"
-trial_options = all_trials["trial_name"].tolist()
-trial_labels = dict(zip(all_trials["trial_name"], all_trials["label"]))
+jobs = get_jobs()
+job_ids = jobs["job_id"].tolist()
 
-# --- Selectors ---
+# --- Selectors: task name + two jobs ---
+task_names = sorted(all_trials["task_name"].unique())
+task_name = st.selectbox("Task", task_names, key="cmp_task")
+
+task_trials = all_trials[all_trials["task_name"] == task_name]
+available_jobs = task_trials["job_id"].tolist()
+
 col_a, col_b = st.columns(2)
 with col_a:
-    trial_a = st.selectbox("Trial A", trial_options, format_func=lambda x: trial_labels[x], key="cmp_a")
+    job_a = st.selectbox("Job A", available_jobs, index=0, key="cmp_job_a")
 with col_b:
-    default_b = min(1, len(trial_options) - 1)
-    trial_b = st.selectbox("Trial B", trial_options, index=default_b, format_func=lambda x: trial_labels[x], key="cmp_b")
+    default_b = min(1, len(available_jobs) - 1)
+    job_b = st.selectbox("Job B", available_jobs, index=default_b, key="cmp_job_b")
+
+trial_row_a = task_trials[task_trials["job_id"] == job_a]
+trial_row_b = task_trials[task_trials["job_id"] == job_b]
+
+if trial_row_a.empty or trial_row_b.empty:
+    empty_state("Task not found in one of the selected jobs.")
+    st.stop()
+
+trial_a = trial_row_a.iloc[0]["trial_name"]
+trial_b = trial_row_b.iloc[0]["trial_name"]
 
 if trial_a == trial_b:
-    st.warning("Select two different trials to compare.")
+    st.warning("Select two different jobs to compare.")
     st.stop()
 
 # --- Load data ---
@@ -59,12 +74,12 @@ st.subheader("Outcome")
 col_a, col_b = st.columns(2)
 with col_a:
     reason = da["failure_reason"]
-    color = {"Passed": "green", "Tests Failed": "red", "Timeout": "orange"}.get(reason, "gray")
-    st.markdown(f"**Trial A**: :{color}[{reason}]")
+    color = {"Passed": "green", "Tests Failed": "red", "Agent Timeout": "orange", "Verifier Timeout": "orange"}.get(reason, "gray")
+    st.markdown(f"**Job A ({job_a})**: :{color}[{reason}]")
 with col_b:
     reason = db["failure_reason"]
-    color = {"Passed": "green", "Tests Failed": "red", "Timeout": "orange"}.get(reason, "gray")
-    st.markdown(f"**Trial B**: :{color}[{reason}]")
+    color = {"Passed": "green", "Tests Failed": "red", "Agent Timeout": "orange", "Verifier Timeout": "orange"}.get(reason, "gray")
+    st.markdown(f"**Job B ({job_b})**: :{color}[{reason}]")
 
 # --- Metrics side-by-side ---
 st.subheader("Metrics")
@@ -118,16 +133,16 @@ if ctrf_results.get("A") and ctrf_results.get("B"):
         sa = ctrf_results["A"].get(test, "—")
         sb = ctrf_results["B"].get(test, "—")
         changed = sa != sb
-        rows.append({"Test": test, "Trial A": sa, "Trial B": sb, "Changed": changed})
+        rows.append({"Test": test, f"Job A ({job_a})": sa, f"Job B ({job_b})": sb, "Changed": changed})
     test_df = pd.DataFrame(rows)
     changed = test_df[test_df["Changed"]]
     if not changed.empty:
         st.markdown("**Changed tests:**")
-        st.dataframe(changed[["Test", "Trial A", "Trial B"]], use_container_width=True, hide_index=True)
+        st.dataframe(changed[["Test", f"Job A ({job_a})", f"Job B ({job_b})"]], use_container_width=True, hide_index=True)
     else:
         st.success("All test results identical.")
     with st.expander("All tests"):
-        st.dataframe(test_df[["Test", "Trial A", "Trial B"]], use_container_width=True, hide_index=True)
+        st.dataframe(test_df[["Test", f"Job A ({job_a})", f"Job B ({job_b})"]], use_container_width=True, hide_index=True)
 
 # --- Tokens ---
 st.subheader("Tokens")
@@ -162,14 +177,14 @@ if not cum_a.empty or not cum_b.empty:
         cum_a["cumulative"] = cum_a["total_tokens"].cumsum()
         fig.add_trace(go.Scatter(
             x=cum_a["turn_index"], y=cum_a["cumulative"],
-            mode="lines+markers", name=f"A: {da['task_name']}",
+            mode="lines+markers", name=f"Job A ({job_a})",
             line=dict(color="#3498db"),
         ))
     if not cum_b.empty:
         cum_b["cumulative"] = cum_b["total_tokens"].cumsum()
         fig.add_trace(go.Scatter(
             x=cum_b["turn_index"], y=cum_b["cumulative"],
-            mode="lines+markers", name=f"B: {db['task_name']}",
+            mode="lines+markers", name=f"Job B ({job_b})",
             line=dict(color="#e67e22"),
         ))
     fig.update_layout(
@@ -194,23 +209,23 @@ if not tools_a.empty or not tools_b.empty:
         era, erb = int(ea.get(tool, 0)), int(eb.get(tool, 0))
         rows.append({
             "Tool": tool,
-            "A Calls": ca, "B Calls": cb, "Diff": cb - ca,
-            "A Errors": era, "B Errors": erb,
+            f"{job_a} Calls": ca, f"{job_b} Calls": cb, "Diff": cb - ca,
+            f"{job_a} Errors": era, f"{job_b} Errors": erb,
         })
-    tool_df = pd.DataFrame(rows).sort_values("A Calls", ascending=False)
+    tool_df = pd.DataFrame(rows).sort_values(f"{job_a} Calls", ascending=False)
     st.dataframe(tool_df, use_container_width=True, hide_index=True)
 
     # Bar chart
     chart_df = pd.DataFrame({
         "Tool": all_tools * 2,
         "Calls": [ta.get(t, 0) for t in all_tools] + [tb.get(t, 0) for t in all_tools],
-        "Trial": ["A"] * len(all_tools) + ["B"] * len(all_tools),
+        "Job": [job_a] * len(all_tools) + [job_b] * len(all_tools),
     })
     import plotly.express as px
     fig = px.bar(
-        chart_df, x="Calls", y="Tool", color="Trial", orientation="h",
+        chart_df, x="Calls", y="Tool", color="Job", orientation="h",
         barmode="group",
-        color_discrete_map={"A": "#3498db", "B": "#e67e22"},
+        color_discrete_map={job_a: "#3498db", job_b: "#e67e22"},
     )
     fig.update_layout(margin=dict(t=20, b=20), yaxis={"categoryorder": "total ascending"})
     st.plotly_chart(fig, use_container_width=True)

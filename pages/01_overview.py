@@ -20,7 +20,7 @@ if job_id:
     row = summary[summary["job_id"] == job_id].iloc[0]
     cats = get_failure_categories(job_id)
     cat_counts = dict(zip(cats["category"], cats["count"])) if not cats.empty else {}
-    c1, c2, c3, c4, c5 = st.columns(5)
+    c1, c2, c3, c4, c5, c6 = st.columns(6)
     with c1:
         metric_card("Trials", int(row["trial_count"]))
     with c2:
@@ -30,7 +30,9 @@ if job_id:
     with c4:
         metric_card("Tests Failed", int(cat_counts.get("Tests Failed", 0)))
     with c5:
-        metric_card("Timed Out", int(cat_counts.get("Timeout", 0)))
+        metric_card("Agent Timeout", int(cat_counts.get("Agent Timeout", 0)))
+    with c6:
+        metric_card("Verifier Timeout", int(cat_counts.get("Verifier Timeout", 0)))
 else:
     c1, c2, c3 = st.columns(3)
     with c1:
@@ -58,7 +60,8 @@ if job_id:
         color_map = {
             "Passed": "#2ecc71",
             "Tests Failed": "#e74c3c",
-            "Timeout": "#f39c12",
+            "Agent Timeout": "#f39c12",
+            "Verifier Timeout": "#e67e22",
         }
         fig = px.pie(
             cats, names="category", values="count", hole=0.4,

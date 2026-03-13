@@ -59,7 +59,7 @@ def job_selector(key: str = "job_select", allow_all: bool = True) -> str | None:
     return selected
 
 
-OUTCOME_OPTIONS = ["All", "Passed", "Tests Failed", "Timeout"]
+OUTCOME_OPTIONS = ["All", "Passed", "Tests Failed", "Agent Timeout", "Verifier Timeout"]
 
 
 def outcome_filter(key: str = "outcome_filter") -> str:

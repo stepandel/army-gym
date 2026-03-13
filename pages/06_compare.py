@@ -6,7 +6,7 @@ import pandas as pd
 from lib.queries import get_job_summary, get_task_across_jobs, get_regressions, get_exception_trends
 from lib.components import empty_state, outcome_filter, apply_outcome_filter, job_multiselect
 
-OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Timeout": "#f39c12"}
+OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Agent Timeout": "#f39c12", "Verifier Timeout": "#e67e22"}
 
 st.title("Compare Jobs")
 
@@ -50,8 +50,10 @@ if not task_jobs.empty:
             return "background-color: #2ecc71; color: white"
         elif v == "Tests Failed":
             return "background-color: #e74c3c; color: white"
-        elif v == "Timeout":
+        elif v == "Agent Timeout":
             return "background-color: #f39c12; color: white"
+        elif v == "Verifier Timeout":
+            return "background-color: #e67e22; color: white"
         return "background-color: #ecf0f1"
 
     styled = pivot.style.map(color_outcome, subset=pivot.columns)

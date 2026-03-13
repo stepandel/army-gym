@@ -44,19 +44,22 @@ sf = get_tool_success_fail(job_id)
 if not sf.empty:
     sf["pass_pct"] = sf["passed_trials"] / sf["trials_using"]
     sf["tests_failed_pct"] = sf["tests_failed_trials"] / sf["trials_using"]
-    sf["timeout_pct"] = sf["timeout_trials"] / sf["trials_using"]
+    sf["agent_timeout_pct"] = sf["agent_timeout_trials"] / sf["trials_using"]
+    sf["verifier_timeout_pct"] = sf["verifier_timeout_trials"] / sf["trials_using"]
 
     melted = sf.melt(
         id_vars=["tool_name"],
-        value_vars=["pass_pct", "tests_failed_pct", "timeout_pct"],
+        value_vars=["pass_pct", "tests_failed_pct", "agent_timeout_pct", "verifier_timeout_pct"],
         var_name="outcome", value_name="pct",
     )
     melted["outcome"] = melted["outcome"].map({
-        "pass_pct": "Passed", "tests_failed_pct": "Tests Failed", "timeout_pct": "Timeout",
+        "pass_pct": "Passed", "tests_failed_pct": "Tests Failed",
+        "agent_timeout_pct": "Agent Timeout", "verifier_timeout_pct": "Verifier Timeout",
     })
     fig = px.bar(
         melted, x="pct", y="tool_name", color="outcome", orientation="h",
-        color_discrete_map={"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Timeout": "#f39c12"},
+        color_discrete_map={"Passed": "#2ecc71", "Tests Failed": "#e74c3c",
+                            "Agent Timeout": "#f39c12", "Verifier Timeout": "#e67e22"},
         labels={"pct": "% of Trials Using Tool", "tool_name": "Tool"},
     )
     fig.update_layout(
@@ -66,8 +69,10 @@ if not sf.empty:
     )
     st.plotly_chart(fig, use_container_width=True)
 
-    display = sf[["tool_name", "trials_using", "passed_trials", "tests_failed_trials", "timeout_trials", "pass_pct"]].copy()
-    display.columns = ["Tool", "Trials Using", "Passed", "Tests Failed", "Timeout", "Pass Rate"]
+    display = sf[["tool_name", "trials_using", "passed_trials", "tests_failed_trials",
+                  "agent_timeout_trials", "verifier_timeout_trials", "pass_pct"]].copy()
+    display.columns = ["Tool", "Trials Using", "Passed", "Tests Failed",
+                       "Agent Timeout", "Verifier Timeout", "Pass Rate"]
     st.dataframe(
         display.style.format({"Pass Rate": "{:.1%}"}),
         use_container_width=True, hide_index=True,

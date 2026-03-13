@@ -7,7 +7,7 @@ import pandas as pd
 from lib.queries import get_duration_stats, get_phase_durations, get_trial_token_summary
 from lib.components import job_selector, empty_state, outcome_filter, apply_outcome_filter
 
-OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Timeout": "#f39c12"}
+OUTCOME_COLORS = {"Passed": "#2ecc71", "Tests Failed": "#e74c3c", "Agent Timeout": "#f39c12", "Verifier Timeout": "#e67e22"}
 
 st.title("Time Analysis")
 
